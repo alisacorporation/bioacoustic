@@ -417,8 +417,6 @@ class MainWindow(QMainWindow):
         self.gear.setPopupMode(QToolButton.InstantPopup)
         self.gear.setMenu(self._settings_menu())
         self.lang_chip.setMenu(self.lang_menu)
-        label_chip = next(c for c in self.header.findChildren(QLabel) if c.objectName() == "chip")
-        self.lang_chip.setFixedHeight(label_chip.sizeHint().height())   # same height as the neighbouring chips
         mini = QToolButton(objectName="hdrBtn", text="─", clicked=self.showMinimized)
         close = QToolButton(objectName="hdrBtn", text="✕", clicked=self.close)
         for b in (self.gear, mini, close):
@@ -643,6 +641,14 @@ class MainWindow(QMainWindow):
             pm.setToolTip(f"Недоступно: {self.paster.error}")
         return m
 
+    def _sync_chip_heights(self):
+        """The language chip is a QToolButton: give it the height of the label chips (only known once QSS is applied)."""
+        if not hasattr(self, "lang_chip"):
+            return
+        label_chip = next(c for c in self.header.findChildren(QLabel) if c.objectName() == "chip")
+        label_chip.ensurePolished()
+        self.lang_chip.setFixedHeight(label_chip.sizeHint().height())
+
     def _set_language(self, code: str):
         self.engine.language = code
         self.settings.setValue("language", code)
@@ -667,6 +673,7 @@ class MainWindow(QMainWindow):
         self.theme = t
         self.settings.setValue("theme", t.name)
         QApplication.instance().setStyleSheet(stylesheet(t))
+        self._sync_chip_heights()
         self.brand.setText(t.title)
         self.logo.theme = t
         self.logo.update()
