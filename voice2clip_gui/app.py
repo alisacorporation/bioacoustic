@@ -519,6 +519,8 @@ class MainWindow(QMainWindow):
         self.unpin_btn.setCursor(Qt.PointingHandCursor)
         self.unpin_btn.setToolTip("Снять выбор (Esc)")
         self.unpin_btn.clicked.connect(lambda: self.history.clearSelection())
+        # keep its space when hidden: otherwise the label row changes height and the card jumps by a few px
+        sp = self.unpin_btn.sizePolicy(); sp.setRetainSizeWhenHidden(True); self.unpin_btn.setSizePolicy(sp)
         self.unpin_btn.hide()
         label_row.addWidget(self.unpin_btn)
         av.addLayout(label_row)
@@ -728,7 +730,7 @@ class MainWindow(QMainWindow):
         self.card_meta.setToolTip(meta)
         self._shown_text = text
         self.copy_btn.setEnabled(bool(text))
-        self.unpin_btn.setVisible(mode == "pinned")
+        self.unpin_btn.setVisible(self._pinned is not None)   # also while previewing other rows
         self.card.setProperty("preview", mode == "preview")
         self.card.setProperty("pinned", mode == "pinned")
         repolish(self.card)
