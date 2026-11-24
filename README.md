@@ -1,6 +1,29 @@
-# Push-to-Talk with whisper.cpp
+# ALISA CORPORATION · VOICIFY
 
-A Python script that enables push-to-talk functionality using whisper.cpp for real-time speech transcription and automatic clipboard copying.
+**Bioacoustic unit 2.1.0** — local push-to-talk speech-to-text on whisper.cpp: hold a key, speak, and the text
+lands in your clipboard (and, optionally, straight in the active window). Desktop GUI (PySide6) and an Android app
+(Jetpack Compose) share one look: three themes, live voice visualisation and a searchable history. Nothing leaves
+your machine.
+
+## Gallery
+
+### Desktop
+
+| Umbrella · recording | Umbrella Dark · oscilloscope + spectrum |
+|---|---|
+| ![Umbrella, recording](docs/screenshots/desktop-umbrella-recording-sine.png) | ![Umbrella Dark, oscilloscope](docs/screenshots/desktop-hive-recording-scope.png) |
+| **Neon · result** | **Umbrella · result** |
+| ![Neon, result](docs/screenshots/desktop-neon-result-sine.png) | ![Umbrella, result](docs/screenshots/desktop-umbrella-result-scope.png) |
+
+### Android
+
+| Umbrella | Umbrella Dark | Neon | History |
+|---|---|---|---|
+| ![Umbrella](docs/screenshots/mobile-umbrella-main.png) | ![Umbrella Dark](docs/screenshots/mobile-hive-main.png) | ![Neon](docs/screenshots/mobile-neon-main.png) | ![History](docs/screenshots/mobile-umbrella-history.png) |
+
+<sub>Screenshots use demo data.</sub>
+
+The underlying engine is a Python script that enables push-to-talk functionality using whisper.cpp for real-time speech transcription and automatic clipboard copying.
 
 ## Features
 
@@ -92,6 +115,39 @@ python push_to_talk.py --list-devices
 # Use specific audio device
 python push_to_talk.py --audio-device 1
 ```
+
+## Desktop GUI
+
+`voice2clip_gui` is a PySide6 front-end for the same engine:
+
+- live voice visualisation: neon sine waves or oscilloscope + FFT spectrum
+- latest transcription card with a **Copy** button
+- searchable history of all saved transcriptions, each row with its own copy button
+- three themes: **Neon**, **Umbrella** (black / blood red) and **Umbrella Dark** (near-black / deep dried-blood red), switchable in the ⚙ menu
+- auto-paste into the active window (Ctrl+Shift+V / Ctrl+V, via a virtual keyboard — works on Wayland)
+- CPU / GPU load bars; automatic CPU fallback when the GPU runs out of memory
+- settings (theme, auto-copy, notifications, always-on-top) are remembered via QSettings
+
+```bash
+./run_gui.sh          # first run creates .venv with PySide6 + numpy
+```
+
+Hold **Right Alt** (or the on-screen record button) to record, release to transcribe.
+Set `VOICE2CLIP_CONFIG=/path/to/config.json` to use another config file.
+Design mockups live in `design/`, gallery screenshots in `docs/screenshots/`.
+
+## Android app
+
+The Android version (Jetpack Compose, same design and themes) lives in the `voice2clip-android` branch of the
+whisper.cpp fork, under `examples/whisper.android`:
+
+- hold the button to talk, or tap once for hands-free and tap again to stop
+- runs whisper on the phone's CPU (`-O3`, ARMv8.2 dot-product + fp16), only over the length of the phrase
+  instead of a full 30 s window; a short post-roll keeps the last word when the button is released early
+- finds `ggml-*.bin` models in *Downloads* (one-time "All files access") or via the file picker; prefers
+  `ggml-large-v3-turbo-q4_0.bin` — about 1.5× faster than q5_0 on ARM with the same text
+- history compatible with the desktop JSON format; thread count switch (auto / 4 / 6 / 8) for tuning
+- no internet permission: audio and text never leave the phone
 
 ## Configuration
 

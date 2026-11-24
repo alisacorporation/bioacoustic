@@ -86,7 +86,19 @@ class PushToTalk:
         self._mic_stream = None
         self._mic_thread = None
         self._mic_stop = threading.Event()
-        
+
+        # Optional hooks for a GUI front-end (called from worker threads):
+        #   on_audio(chunk_bytes)  — every mic chunk, recording or not
+        #   on_state(state)        — "idle" | "recording" | "transcribing" | "error"
+        #   on_result(text, audio_seconds, transcribe_seconds, saved_path)
+        self.on_audio = None
+        self.on_state = None
+        self.on_result = None
+        self.on_error = None    # on_error(message) — human-readable problem/notice for the UI
+        self.last_device = "—"  # "GPU" or "CPU": where whisper actually ran last time
+        self.auto_copy = True   # copy result via pyperclip (GUI uses QClipboard instead)
+        self.notify = True      # desktop notifications
+
         # Key handling — resolve name from config to pynput.keyboard.Key
         key_name = self._configured_key_name or "alt_r"
         self.push_to_talk_key = getattr(pynput.keyboard.Key, key_name, pynput.keyboard.Key.alt_r)
@@ -135,7 +147,7 @@ class PushToTalk:
     def _send_notification(self, title: str, message: str, timeout: int = 3, icon: str = None, urgency: str = "normal"):
         """Send a desktop notification with KDE enhancements"""
         # Skip empty notifications
-        if not title.strip() or not message.strip():
+        if not self.notify or not title.strip() or not message.strip():
             return
             
         if NOTIFY_SEND_AVAILABLE:
@@ -258,6 +270,8 @@ class PushToTalk:
                     self.audio_frames.append(data)
                 else:
                     self._preroll.append(data)
+                if self.on_audio:
+                    self.on_audio(data)
 
         self._mic_thread = threading.Thread(target=_reader, daemon=True)
         self._mic_thread.start()
@@ -283,18 +297,25 @@ class PushToTalk:
         self.audio_frames = list(self._preroll)
         self._preroll.clear()
         self.is_recording = True
+        self._emit_state("recording")
 
         print("🎤 Recording... (release key to transcribe)")
 
         # Fire-and-forget notification (does not block capture)
         self._send_notification("Start", "Recording...", timeout=2, urgency="normal")
             
+    def _emit_state(self, state):
+        if self.on_state:
+            self.on_state(state)
+
     def stop_recording_and_transcribe(self):
-        """Stop recording and transcribe the audio"""
+        """Stop recording and transcribe the audio. Returns the text or None."""
         if not self.is_recording:
-            return
-            
+            return None
+
         self.is_recording = False
+        self._emit_state("transcribing")
+        transcription = None
         print("⏹️  Processing...")
         
         # Send processing notification
@@ -325,7 +346,7 @@ class PushToTalk:
             if len(self.audio_frames) == 0:
                 print("❌ No audio frames recorded!")
                 return None
-                
+
             if audio_duration < 0.3:  # Less than 0.3 seconds
                 print("⚠️  Audio too short, ignoring...")
                 return None
@@ -335,8 +356,9 @@ class PushToTalk:
             
             if transcription:
                 # Copy to clipboard
-                pyperclip.copy(transcription)
-                print(f"✅ Copied to clipboard: {transcription}")
+                if self.auto_copy:
+                    pyperclip.copy(transcription)
+                    print(f"✅ Copied to clipboard: {transcription}")
 
                 # Also print to console
                 transcribe_s = getattr(self, "_last_transcribe_seconds", 0.0)
@@ -348,6 +370,9 @@ class PushToTalk:
                 saved_path = self._save_transcription(transcription, audio_duration)
                 if saved_path:
                     print(f"💾 Saved to: {saved_path}")
+
+                if self.on_result:
+                    self.on_result(transcription, audio_duration, transcribe_s, saved_path)
 
                 # Send completion notification
                 self._send_notification(
@@ -362,12 +387,17 @@ class PushToTalk:
                 
         except Exception as e:
             print(f"Error during transcription: {e}")
+            self._emit_state("error")
         finally:
             # Clean up temporary file
             try:
                 os.unlink(temp_path)
             except:
                 pass
+            if not self.is_recording:
+                self._emit_state("idle")
+
+        return transcription
                 
     def _transcribe_audio(self, audio_path):
         """Transcribe audio using whisper.cpp"""
@@ -401,7 +431,13 @@ class PushToTalk:
                 text=True,
                 timeout=30  # Reduced timeout to 30 seconds
             )
+            # GPU busy (e.g. another llama.cpp server holds the VRAM) → retry on CPU instead of failing
+            if result.returncode != 0 and self._is_gpu_oom(result.stderr) and "-ng" not in cmd:
+                print("⚠️  Not enough GPU memory for whisper — retrying on CPU (-ng)")
+                self._emit_error("Мало видеопамяти — распознаю на CPU")
+                result = subprocess.run(cmd + ["-ng"], capture_output=True, text=True, timeout=120)  # CPU is ~5-10x slower
             self._last_transcribe_seconds = time.monotonic() - t0
+            self.last_device = "CPU" if (result.args and "-ng" in result.args) else "GPU"
             print(f"⏱️  Transcription took: {self._last_transcribe_seconds:.2f}s")
             
             if result.returncode == 0:
@@ -414,10 +450,13 @@ class PushToTalk:
                 print(f"❌ Whisper error: {result.stderr}")
                 if result.stdout:
                     print(f"🔍 Raw output: '{result.stdout}'")
+                last = [l for l in result.stderr.strip().splitlines() if l.strip()]
+                self._emit_error("Ошибка whisper: " + (last[-1][:120] if last else f"код {result.returncode}"))
                 return None
-                
+
         except subprocess.TimeoutExpired:
             print("Transcription timed out")
+            self._emit_error("whisper не уложился во время — распознавание прервано")
             self._send_notification(
                 "⏰ Transcription Timeout",
                 "Audio processing took too long",
@@ -427,7 +466,18 @@ class PushToTalk:
             return None
         except Exception as e:
             print(f"Error running whisper.cpp: {e}")
+            self._emit_error(f"Не удалось запустить whisper: {e}")
             return None
+
+    @staticmethod
+    def _is_gpu_oom(stderr: str) -> bool:
+        s = stderr or ""
+        return ("OutOfDeviceMemory" in s or "out of memory" in s.lower()
+                or "Device memory allocation" in s)
+
+    def _emit_error(self, message: str):
+        if self.on_error:
+            self.on_error(message)
             
     def _clean_transcription(self, text):
         """Clean and filter transcription output"""

@@ -2,3 +2,7 @@
 pyaudio>=0.2.11
 pynput>=1.7.6
 pyperclip>=1.8.2
+
+# GUI (voice2clip_gui)
+PySide6>=6.6
+numpy>=1.26
