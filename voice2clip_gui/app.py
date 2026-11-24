@@ -30,7 +30,8 @@ from push_to_talk import PushToTalk  # noqa: E402
 
 EDGE = 6  # px grab margin for resizing the frameless window
 ICON = Path(__file__).resolve().parent / "assets" / "emblem.png"   # 1024 px, tools/render_emblem.py
-VERSION = "2.1.0"   # major.minor.patch, shown under the title
+VERSION = "2.1.0"
+LANGUAGES = (("ru", "Русский"), ("en", "English"), ("auto", "Авто (определять)"))   # major.minor.patch, shown under the title
 
 
 def copy_text(text: str):
@@ -318,6 +319,8 @@ class MainWindow(QMainWindow):
         self.engine = PushToTalk(config_path=os.environ.get("VOICE2CLIP_CONFIG", str(ROOT / "config.json")))
         self.engine.notify = self.settings.value("notify", False, type=bool)
         self.engine.auto_copy = self.settings.value("auto_copy", True, type=bool)
+        # speech language: GUI choice overrides config.json; "auto" is passed explicitly (whisper-cli defaults to "en")
+        self.engine.language = self.settings.value("language", self.engine.language or "auto")
 
         self.bridge = Bridge()
         self.engine.on_audio = self.bridge.audio.emit
@@ -389,6 +392,12 @@ class MainWindow(QMainWindow):
         h.addSpacing(10)
         for k, val in self._chips():
             chip = QLabel(f"{k} <b>{val}</b>", objectName="chip")
+            if k == "lang":                      # clickable: opens the speech-language menu
+                self.lang_chip = chip
+                chip.setText(f"{k} <b>{val}</b> ▾")
+                chip.setCursor(Qt.PointingHandCursor)
+                chip.setToolTip("Язык речи")
+                chip.mousePressEvent = lambda _e: self.lang_menu.exec(chip.mapToGlobal(chip.rect().bottomLeft()))
             h.addWidget(chip, 0, Qt.AlignVCenter)
         h.addStretch(1)
         status = QFrame(objectName="status")
@@ -596,6 +605,16 @@ class MainWindow(QMainWindow):
             grp.addAction(a)
             tm.addAction(a)
             self.theme_actions[name] = a
+        self.lang_menu = m.addMenu("Язык речи")
+        lgrp = QActionGroup(self)
+        self.lang_actions = {}
+        for code, label in LANGUAGES:
+            a = QAction(label, self, checkable=True)
+            a.setChecked(self.engine.language == code)
+            a.triggered.connect(lambda _=False, c=code: self._set_language(c))
+            lgrp.addAction(a)
+            self.lang_menu.addAction(a)
+            self.lang_actions[code] = a
         m.addSeparator()
         for key, label, default, setter in (
             ("auto_copy", "Автокопирование в буфер", True, lambda v: setattr(self.engine, "auto_copy", v)),
@@ -619,6 +638,15 @@ class MainWindow(QMainWindow):
         if not self.paster.available:
             pm.setToolTip(f"Недоступно: {self.paster.error}")
         return m
+
+    def _set_language(self, code: str):
+        self.engine.language = code
+        self.settings.setValue("language", code)
+        if code in self.lang_actions:
+            self.lang_actions[code].setChecked(True)
+        if hasattr(self, "lang_chip"):
+            self.lang_chip.setText(f"lang <b>{code}</b> ▾")
+        self._show_toast("Язык речи: " + dict(LANGUAGES).get(code, code))
 
     def _set_paste(self, combo: str):
         self.paste_combo = combo
