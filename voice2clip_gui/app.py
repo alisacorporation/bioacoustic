@@ -391,13 +391,14 @@ class MainWindow(QMainWindow):
         h.addLayout(brand_box)
         h.addSpacing(10)
         for k, val in self._chips():
-            chip = QLabel(f"{k} <b>{val}</b>", objectName="chip")
-            if k == "lang":                      # clickable: opens the speech-language menu
-                self.lang_chip = chip
-                chip.setText(f"{k} <b>{val}</b> ▾")
+            if k == "lang":
+                # a real menu button: Qt anchors the popup to the button itself (global coords are unreliable on Wayland)
+                chip = QToolButton(objectName="chip", text=f"lang {val} ▾", popupMode=QToolButton.InstantPopup)
                 chip.setCursor(Qt.PointingHandCursor)
                 chip.setToolTip("Язык речи")
-                chip.mousePressEvent = lambda _e: self.lang_menu.exec(chip.mapToGlobal(chip.rect().bottomLeft()))
+                self.lang_chip = chip
+            else:
+                chip = QLabel(f"{k} <b>{val}</b>", objectName="chip")
             h.addWidget(chip, 0, Qt.AlignVCenter)
         h.addStretch(1)
         status = QFrame(objectName="status")
@@ -415,6 +416,9 @@ class MainWindow(QMainWindow):
         self.gear = QToolButton(objectName="hdrBtn", text="⚙")
         self.gear.setPopupMode(QToolButton.InstantPopup)
         self.gear.setMenu(self._settings_menu())
+        self.lang_chip.setMenu(self.lang_menu)
+        label_chip = next(c for c in self.header.findChildren(QLabel) if c.objectName() == "chip")
+        self.lang_chip.setFixedHeight(label_chip.sizeHint().height())   # same height as the neighbouring chips
         mini = QToolButton(objectName="hdrBtn", text="─", clicked=self.showMinimized)
         close = QToolButton(objectName="hdrBtn", text="✕", clicked=self.close)
         for b in (self.gear, mini, close):
@@ -645,7 +649,7 @@ class MainWindow(QMainWindow):
         if code in self.lang_actions:
             self.lang_actions[code].setChecked(True)
         if hasattr(self, "lang_chip"):
-            self.lang_chip.setText(f"lang <b>{code}</b> ▾")
+            self.lang_chip.setText(f"lang {code} ▾")
         self._show_toast("Язык речи: " + dict(LANGUAGES).get(code, code))
 
     def _set_paste(self, combo: str):

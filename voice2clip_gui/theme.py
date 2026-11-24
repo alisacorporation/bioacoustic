@@ -106,6 +106,9 @@ QToolTip {{ background: {t.panel2}; color: {t.text}; border: 1px solid {t.line};
 #brandVer {{ font-family: {MONO}; color: {t.muted}; font-size: 10px; letter-spacing: 2px; }}
 #chip {{ font-family: {MONO}; font-size: 11px; color: {t.muted}; padding: 4px 9px;
          background: {t.panel}; border: 1px solid {t.line}; }}
+QToolButton#chip {{ padding: 0px 9px; }}
+QToolButton#chip::menu-indicator {{ image: none; width: 0; }}
+QToolButton#chip:hover {{ color: {t.text}; border-color: {t.dim}; }}
 #status {{ font-size: 12px; color: {t.muted}; padding: 4px 11px; background: {t.panel};
            border: 1px solid {t.line}; }}
 #hdrBtn {{ background: transparent; border: 1px solid transparent; color: {t.muted};
