@@ -138,8 +138,8 @@ Design mockups live in `design/`, gallery screenshots in `docs/screenshots/`.
 
 ## Android app
 
-The Android version (Jetpack Compose, same design and themes) lives in the `voice2clip-android` branch of the
-whisper.cpp fork, under `examples/whisper.android`:
+The Android version (Jetpack Compose, same design and themes) lives in its own repository,
+**[alisacorporation/bioacoustic-android](https://github.com/alisacorporation/bioacoustic-android)**:
 
 - hold the button to talk, or tap once for hands-free and tap again to stop
 - runs whisper on the phone's CPU (`-O3`, ARMv8.2 dot-product + fp16), only over the length of the phrase
